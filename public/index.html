@@ -54,7 +54,7 @@
     <div class="log" id="chatLog" aria-live="polite"></div>
   </div>
 
-<!-- ========== SCRIPT PHỎNG VẤN ========== -->
+<!-- === SCRIPT === -->
 <script>
 document.addEventListener("DOMContentLoaded", () => {
 
@@ -153,7 +153,7 @@ function initRecognition(){
     appendLog("Mỹ Tiên",reply);
     await speakServer(reply);
 
-    // Sau khi phản hồi xong
+    // 🎯 Nếu đây là phản hồi đầu tiên sau lời chào
     if(!firstGreetingDone){
       firstGreetingDone=true;
       await new Promise(res=>setTimeout(res,1500));
@@ -163,7 +163,7 @@ function initRecognition(){
       return;
     }
 
-    // Hỏi các câu tiếp theo
+    // 🔁 Hỏi các câu tiếp theo
     current++;
     if(current<QUESTIONS.length){
       await new Promise(res=>setTimeout(res,1500));
@@ -171,8 +171,11 @@ function initRecognition(){
       await speakServer(QUESTIONS[current]);
       if(isRunning && recognition) recognition.start();
     }else{
-      appendLog("Mỹ Tiên","Cảm ơn bạn vì cuộc trao đổi hôm nay.");
-      await speakServer("Cảm ơn bạn vì cuộc trao đổi hôm nay.");
+      // ✅ PHẦN CHÀO KẾT THÚC
+      const goodbyeText = "Rất vui được trò chuyện cùng bạn hôm nay. Cảm ơn bạn đã dành thời gian cho buổi phỏng vấn. Chúc bạn một ngày thật vui vẻ và nhiều năng lượng nhé!";
+      appendLog("Mỹ Tiên",goodbyeText);
+      await speakServer(goodbyeText);
+
       setStatus("✅ Kết thúc phỏng vấn.");
       isRunning=false;
     }
@@ -186,7 +189,6 @@ document.getElementById('startBtn').onclick=async()=>{
   isRunning=true;current=0;firstGreetingDone=false;chatLog.innerHTML="";
   recognition=initRecognition();
 
-  // Mỹ Tiên chào và chờ người dùng trả lời
   appendLog("Mỹ Tiên","Xin chào, tôi là Mỹ Tiên, phụ trách nhân sự. Rất vui được gặp bạn hôm nay!");
   playSpeakingAnimation();
   await speakServer("Xin chào, tôi là Mỹ Tiên, phụ trách nhân sự. Rất vui được gặp bạn hôm nay!");
