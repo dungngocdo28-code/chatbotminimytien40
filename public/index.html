@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<title>Chatbot Mỹ Tiên — Phỏng vấn (Giọng Ban Mai)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root{--primary:#f06b9a;--muted:#666;}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;}
+  body{background:linear-gradient(180deg,#f4f6f8 0%,#eef2f6 100%);display:flex;align-items:center;justify-content:center;padding:28px}
+  .card{width:460px;max-width:96%;background:#fff;border-radius:14px;box-shadow:0 12px 40px rgba(14,18,30,0.08);padding:18px;text-align:center}
+  h1{margin:6px 0;color:var(--primary);font-size:20px}
+  p.lead{margin:6px 0 12px;color:var(--muted);font-size:14px}
+  .avatar-frame{width:300px;height:300px;border-radius:18px;overflow:hidden;margin:12px auto;position:relative;background-size:cover;background-position:center;transition:transform 0.25s ease}
+  .avatar-frame.with-img{background-image:url('/office_bg.jpg')}
+  .avatar-frame::after{content:'';position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.12),rgba(255,255,255,0.02));pointer-events:none}
+  .avatar-wrapper{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;z-index:2}
+  .avatar{width:92%;height:92%;object-fit:cover;border-radius:10px;transition:transform 0.12s ease,filter 0.12s ease}
+  .eyes::before,.eyes::after{content:"";position:absolute;top:44%;width:22%;height:6%;background:rgba(0,0,0,0.6);border-radius:50%;opacity:0;transition:opacity 0.12s ease;pointer-events:none}
+  .eyes::before{left:30%}.eyes::after{right:30%}
+  .avatar-wrapper.blink .eyes::before,.avatar-wrapper.blink .eyes::after{opacity:1}
+  .avatar-wrapper.smile .avatar{transform:scale(1.02) translateY(-3px);filter:brightness(1.05)}
+  .nameplate{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);background:rgba(0,0,0,0.65);color:#fff;padding:6px 12px;border-radius:999px;font-weight:600;font-size:15px;z-index:3;box-shadow:0 6px 18px rgba(0,0,0,0.18)}
+  .controls{display:flex;gap:8px;justify-content:center;margin-top:10px}
+  button{background:var(--primary);color:#fff;border:0;border-radius:8px;padding:10px 14px;cursor:pointer}
+  button[disabled]{opacity:0.6;cursor:not-allowed}
+  .secondary{background:#7a8a98;padding:10px 12px}
+  .status{margin-top:10px;color:var(--muted);font-size:13px}
+  .log{margin-top:12px;text-align:left;background:#fafafa;border-radius:8px;padding:10px;max-height:160px;overflow:auto;font-size:14px}
+  .log div{margin-bottom:8px} .log strong{color:#222;margin-right:6px}
+  @media (max-width:520px){.avatar-frame{width:240px;height:240px}}
+</style>
+</head>
+
+<body onclick="try{new Audio().play().catch(()=>{})}catch(e){}">
+  <div class="card">
+    <h1>Chatbot HR — Mỹ Tiên 💼</h1>
+    <p class="lead">Phỏng vấn nhân sự — bằng tiếng Việt (Giọng Ban Mai)</p>
+
+    <div id="avatarFrame" class="avatar-frame with-img">
+      <div class="avatar-wrapper" id="avatarWrap">
+        <img id="avatar" class="avatar" src="avatar_hr.png" alt="Mỹ Tiên" />
+        <div class="eyes"></div>
+        <div class="nameplate">Mỹ Tiên — Nhân sự</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="startBtn">🎙️ Bắt đầu phỏng vấn</button>
+      <button id="stopBtn" disabled class="secondary">⏹ Dừng</button>
+    </div>
+
+    <div class="status" id="statusText">Nhấn "Bắt đầu phỏng vấn" để khởi động.</div>
+    <div class="log" id="chatLog" aria-live="polite"></div>
+  </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+const QUESTIONS = [
+  "Chào bạn, hôm nay bạn thế nào?",
+  "Tôi thấy bạn thường đến họp hơi trễ vài phút. Bạn nghĩ sao về điều này?",
+  "Tôi đã giúp bạn hoàn thành phần bài của bạn rồi đó.",
+  "Cảm ơn bạn vì cuộc trao đổi hôm nay."
+];
+
+let current = 0, recognition = null, isRunning = false, waitingGoodbye = false;
+
+const statusEl = document.getElementById('statusText');
+const chatLog = document.getElementById('chatLog');
+const avatarWrap = document.getElementById('avatarWrap');
+const avatarFrame = document.getElementById('avatarFrame');
+
+function appendLog(who, text){ const d=document.createElement('div'); d.innerHTML=`<strong>${who}:</strong> ${text}`; chatLog.appendChild(d); chatLog.scrollTop=chatLog.scrollHeight; }
+function setStatus(t){ statusEl.textContent=t; }
+
+/* ==== AUDIO ==== */
+async function speakServer(msg){
+  return new Promise(async (resolve, reject) => {
+    try{
+      if (!msg || msg.trim().length < 2) return resolve();
+
+      if (recognition && isRunning) recognition.stop(); // 🔇 tắt mic khi bot nói
+
+      const r = await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:msg})});
+      if(r.ok){
+        const b=await r.blob();
+        const url=URL.createObjectURL(b);
+        const audio=new Audio(url);
+        audio.volume=1.0;
+        audio.onended=()=>{URL.revokeObjectURL(url);resolve();};
+        audio.onerror=()=>resolve();
+        await audio.play().catch(()=>setStatus("Nhấn để bật tiếng 🎧"));
+      } else resolve();
+    }catch(e){console.error("💥 Lỗi TTS:",e);resolve();}
+  });
+}
+
+/* ==== GPT ==== */
+async function getGPTReply(userInput){
+  try{
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:userInput,contextIndex:current})});
+    const j=await r.json();
+    return j.reply||'Cảm ơn bạn nhé!';
+  }catch(e){return "Xin lỗi, có lỗi kết nối.";}
+}
+
+/* ==== ANIM ==== */
+function startAutoBlink(){setInterval(()=>{avatarWrap.classList.add('blink');setTimeout(()=>avatarWrap.classList.remove('blink'),160);},3000+Math.random()*1000);}
+function playSpeakingAnimation(){avatarWrap.classList.add('smile');avatarFrame.style.transform='translateY(-4px) scale(1.01)';setTimeout(()=>{avatarWrap.classList.remove('smile');avatarFrame.style.transform='';},1200);}
+
+/* ==== SPEECH ==== */
+function initRecognition(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){alert("Trình duyệt không hỗ trợ voice. Dùng Chrome.");return null;}
+  const r=new SR(); r.lang='vi-VN'; r.interimResults=false; r.maxAlternatives=1;
+  r.onstart=()=>setStatus("🎤 Đang nghe...");
+  r.onerror=e=>setStatus("Không nghe rõ, nói lại nhé!");
+  r.onend=()=>{ if(isRunning) setStatus("⏳ Đang xử lý..."); };
+
+  r.onresult=async e=>{
+    const userText=e.results[0][0].transcript.trim();
+    appendLog("Bạn",userText);
+    setStatus("🧠 Đang tạo phản hồi...");
+    playSpeakingAnimation();
+
+    // 👂 1️⃣ Bot nghe xong → phản hồi câu người dùng nói
+    const reply=await getGPTReply(userText);
+    appendLog("Mỹ Tiên",reply);
+    await speakServer(reply);
+
+    // 🕒 2️⃣ Dừng 1.2 giây cho tự nhiên
+    await new Promise(res=>setTimeout(res,1200));
+
+    // 👩‍💼 3️⃣ Sau khi phản hồi xong → đọc câu hỏi tiếp theo
+    current++;
+    if(current<QUESTIONS.length){
+      appendLog("Mỹ Tiên",QUESTIONS[current]);
+      await speakServer(QUESTIONS[current]);
+      // 🔊 Bật mic sau khi đọc xong câu hỏi
+      if(isRunning && recognition) recognition.start();
+    } else {
+      appendLog("Mỹ Tiên","Cảm ơn bạn vì cuộc trao đổi hôm nay.");
+      await speakServer("Cảm ơn bạn vì cuộc trao đổi hôm nay.");
+      setStatus("✅ Kết thúc phỏng vấn.");
+      isRunning=false;
+    }
+  };
+  return r;
+}
+
+/* ==== START ==== */
+document.getElementById('startBtn').onclick=async()=>{
+  if(isRunning)return;
+  isRunning=true;current=0;chatLog.innerHTML="";
+  recognition=initRecognition();
+  appendLog("Mỹ Tiên","Xin chào, tôi là Mỹ Tiên, phụ trách nhân sự. Rất vui được gặp bạn hôm nay!");
+  playSpeakingAnimation();
+  await speakServer("Xin chào, tôi là Mỹ Tiên, phụ trách nhân sự. Rất vui được gặp bạn hôm nay!");
+  appendLog("Mỹ Tiên",QUESTIONS[current]);
+  await speakServer(QUESTIONS[current]);
+  recognition.start();
+};
+
+document.getElementById('stopBtn').onclick=()=>{if(recognition)recognition.stop();isRunning=false;setStatus("Đã dừng.");};
+
+startAutoBlink();
+
+}); // END DOMContentLoaded
+</script>
+</body>
+</html>
